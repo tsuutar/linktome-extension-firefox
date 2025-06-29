@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- 設定画面 -->
+    <section class="authentication">
+      <h3>設定</h3>
+      <label for="apiurl">linktome URL:</label>
+      <input type="text" id="linktomeUrl" placeholder="http://linktome/" />
+
+      <label for="token">Token:</label>
+      <input type="text" id="token" placeholder="your-token-here" />
+
+      <button id="save">保存</button>
+      <div class="bottom grey">ⓘ 設定後はリンク一覧画面が表示されます</div>
+    </section>
+
+    <!-- 認証後に表示されるリンク一覧画面 -->
+    <section class="authenticated hidden">
+      <h3 class="link-list-title">
+        リンク一覧
+        <div style="display: flex; gap: 6px; align-items: center">
+          <button id="refreshBtn" class="refresh-btn-small">更新</button>
+          <button
+            id="addCurrentTabBtn"
+            class="refresh-btn-small"
+            title="現在のタブを保存"
+          >
+            追加
+          </button>
+        </div>
+      </h3>
+
+      <!-- 検索バー -->
+      <input
+        type="text"
+        id="searchInput"
+        class="filter-items"
+        placeholder="タイトルまたはURLで検索"
+      />
+
+      <ul id="linkList"></ul>
+
+      <!-- ページネーション -->
+      <div class="pagination">
+        <button class="pagination-previous">«</button>
+        <select id="pagination-select"></select>
+        <button class="pagination-next">»</button>
+      </div>
+
+      <button id="settingsBtn" class="settings-btn">設定変更</button>
+    </section>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

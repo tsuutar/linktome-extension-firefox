@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "LinkToMe",
+  "version": "1.0",
+  "description": "LinkToMe extension for Firefox",
+  "permissions": ["tabs", "storage", "activeTab", "contextMenus"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon.png"
+    }
+  },
+  "background": {
+    "scripts": ["background.js"]
+  }
+}
