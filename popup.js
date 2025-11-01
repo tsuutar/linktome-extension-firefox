@@ -3,10 +3,38 @@ let totalPages = 1;
 let allLinks = []; // APIから取得した全リンクを保持
 let filteredLinks = []; // 検索結果を保持
 const ITEMS_PER_PAGE = 20;
+let currentTabUrl = ""; // 現在のタブのURL
 
 // 設定を取得するヘルパー関数
 async function getSettings() {
   return await chrome.storage.local.get(["linktomeUrl", "token"]);
+}
+
+// 現在のタブのURLを取得
+async function getCurrentTabUrl() {
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs && tabs.length > 0) {
+      return tabs[0].url || "";
+    }
+  } catch (error) {
+    console.error("タブURL取得エラー:", error);
+  }
+  return "";
+}
+
+// リンクをソートする関数（現在のタブのURLと一致するものを最優先）
+function sortLinksByCurrentTab(links) {
+  if (!currentTabUrl) return links;
+
+  return [...links].sort((a, b) => {
+    const aMatches = a.url === currentTabUrl;
+    const bMatches = b.url === currentTabUrl;
+
+    if (aMatches && !bMatches) return -1;
+    if (!aMatches && bMatches) return 1;
+    return 0;
+  });
 }
 
 // 設定を保存
@@ -85,6 +113,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 // リンクを取得する関数
 // ページ番号を引数にとり、デフォルトは1
 async function fetchLinks(page = 1) {
+  // 現在のタブのURLを取得
+  currentTabUrl = await getCurrentTabUrl();
+
   // 設定の取得
   const { linktomeUrl } = await chrome.storage.local.get("linktomeUrl");
   if (!linktomeUrl) {
@@ -128,6 +159,9 @@ async function fetchLinks(page = 1) {
       filteredLinks = allLinks;
     }
 
+    // 現在のタブと一致するブックマークを最優先でソート
+    filteredLinks = sortLinksByCurrentTab(filteredLinks);
+
     // フィルタ後のリンク数でページ数を計算
     totalPages = Math.ceil(filteredLinks.length / ITEMS_PER_PAGE);
 
@@ -161,6 +195,13 @@ function displayLinks() {
     const item = filteredLinks[i];
     const li = document.createElement("li");
     li.style.cursor = "pointer";
+
+    // 現在のタブと一致する場合は特別なスタイルを適用
+    const isCurrentTab = item.url === currentTabUrl;
+    if (isCurrentTab) {
+      li.classList.add("current-tab");
+    }
+
     li.addEventListener("click", () => {
       chrome.tabs.create({ url: item.url });
     });
@@ -256,6 +297,8 @@ searchInputElem.addEventListener("input", (event) => {
       item.title.toLowerCase().includes(searchQuery) ||
       item.url.toLowerCase().includes(searchQuery)
   );
+  // 現在のタブと一致するブックマークを最優先でソート
+  filteredLinks = sortLinksByCurrentTab(filteredLinks);
   // フィルタ後のリンク数でページ数を再計算
   totalPages = Math.ceil(filteredLinks.length / ITEMS_PER_PAGE);
   // 検索後に1ページ目に戻る

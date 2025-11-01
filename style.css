@@ -67,10 +67,19 @@ li {
   flex-direction: column;
   gap: 2px;
   min-height: 44px;
-  transition: background 0.2s;
+  transition: background 0.2s, border-left 0.2s;
 }
 li:hover {
   background: #f0f7f0;
+}
+/* 現在のタブと一致するブックマークのスタイル */
+li.current-tab {
+  background-color: #e8f5e9;
+  border-left: 4px solid #4caf50;
+  padding-left: 6px;
+}
+li.current-tab:hover {
+  background-color: #c8e6c9;
 }
 .link-title-row {
   display: flex;
