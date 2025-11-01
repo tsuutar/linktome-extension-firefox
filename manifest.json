@@ -1,17 +1,31 @@
 {
   "manifest_version": 3,
   "name": "LinkToMe",
-  "version": "1.0",
+  "version": "1.0.1",
   "description": "LinkToMe extension for Firefox",
+  "author": "tsuutar",
+  "homepage_url": "https://github.com/tsuutar/linktome-extension-firefox",
   "permissions": ["tabs", "storage", "activeTab", "contextMenus"],
   "host_permissions": ["<all_urls>"],
+  "icons": {
+    "48": "icons/icon.png",
+    "96": "icons/icon.png"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icons/icon.png"
+      "16": "icons/icon.png",
+      "32": "icons/icon.png",
+      "48": "icons/icon.png"
     }
   },
   "background": {
     "scripts": ["background.js"]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "linktome@tsuutar.com",
+      "strict_min_version": "109.0"
+    }
   }
 }

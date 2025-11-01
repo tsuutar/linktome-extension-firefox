@@ -2,6 +2,12 @@ let currentPage = 1;
 let totalPages = 1;
 let allLinks = []; // APIから取得した全リンクを保持
 let filteredLinks = []; // 検索結果を保持
+const ITEMS_PER_PAGE = 20;
+
+// 設定を取得するヘルパー関数
+async function getSettings() {
+  return await chrome.storage.local.get(["linktomeUrl", "token"]);
+}
 
 // 設定を保存
 document.getElementById("save").addEventListener("click", async () => {
@@ -105,23 +111,38 @@ async function fetchLinks(page = 1) {
 
     const data = await response.json();
     allLinks = data;
-    filteredLinks = allLinks; // 初回は全てのリンクを表示
-    totalPages = Math.ceil(allLinks.length / 20); // 全体のページ数を計算
 
-    // 検索条件が保存されていれば再フィルタ
-    chrome.storage.local.get(["searchInputValue"], (result) => {
-      if (result.searchInputValue) {
-        const searchQuery = result.searchInputValue.toLowerCase();
-        filteredLinks = allLinks.filter(
-          (item) =>
-            item.title.toLowerCase().includes(searchQuery) ||
-            item.url.toLowerCase().includes(searchQuery)
-        );
-        currentPage = 1;
-      }
-      updatePagination();
-      displayLinks();
-    });
+    // 検索条件を取得してフィルタリング
+    const { searchInputValue } = await chrome.storage.local.get([
+      "searchInputValue",
+    ]);
+    const searchQuery = (searchInputValue || "").toLowerCase();
+
+    if (searchQuery) {
+      filteredLinks = allLinks.filter(
+        (item) =>
+          item.title.toLowerCase().includes(searchQuery) ||
+          item.url.toLowerCase().includes(searchQuery)
+      );
+    } else {
+      filteredLinks = allLinks;
+    }
+
+    // フィルタ後のリンク数でページ数を計算
+    totalPages = Math.ceil(filteredLinks.length / ITEMS_PER_PAGE);
+
+    // 保存されているページ番号を取得し、範囲チェック
+    const { paginationPage } = await chrome.storage.local.get([
+      "paginationPage",
+    ]);
+    if (paginationPage && paginationPage <= totalPages) {
+      currentPage = paginationPage;
+    } else {
+      currentPage = 1;
+    }
+
+    updatePagination();
+    displayLinks();
   } catch (error) {
     console.error("取得エラー:", error);
     alert("リンク取得に失敗しました");
@@ -133,8 +154,8 @@ function displayLinks() {
   const list = document.getElementById("linkList");
   list.innerHTML = "";
 
-  const startIndex = (currentPage - 1) * 20;
-  const endIndex = Math.min(startIndex + 20, filteredLinks.length);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, filteredLinks.length);
 
   for (let i = startIndex; i < endIndex; i++) {
     const item = filteredLinks[i];
@@ -163,8 +184,7 @@ function displayLinks() {
     del.addEventListener("click", async (e) => {
       e.stopPropagation();
       if (confirm("本当に削除しますか？")) {
-        const { linktomeUrl } = await chrome.storage.local.get("linktomeUrl");
-        const { token } = await chrome.storage.local.get("token");
+        const { linktomeUrl, token } = await getSettings();
         try {
           const res = await fetch(
             `${linktomeUrl}api/delete?id=${encodeURIComponent(item.id)}`,
@@ -175,10 +195,14 @@ function displayLinks() {
               },
             }
           );
-          if (!res.ok) throw new Error("削除失敗");
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`削除失敗 (${res.status}): ${errorText}`);
+          }
           fetchLinks(currentPage);
         } catch (err) {
-          alert("削除に失敗しました");
+          console.error("削除エラー:", err);
+          alert(`削除に失敗しました: ${err.message}`);
         }
       }
     });
@@ -206,6 +230,11 @@ function updatePagination() {
   const paginationSelector = document.getElementById("pagination-select");
   paginationSelector.innerHTML = "";
 
+  // ページが1つもない場合のデフォルト
+  if (totalPages === 0) {
+    totalPages = 1;
+  }
+
   for (let i = 1; i <= totalPages; i++) {
     const option = document.createElement("option");
     option.value = i;
@@ -227,6 +256,8 @@ searchInputElem.addEventListener("input", (event) => {
       item.title.toLowerCase().includes(searchQuery) ||
       item.url.toLowerCase().includes(searchQuery)
   );
+  // フィルタ後のリンク数でページ数を再計算
+  totalPages = Math.ceil(filteredLinks.length / ITEMS_PER_PAGE);
   // 検索後に1ページ目に戻る
   currentPage = 1;
   chrome.storage.local.set({ paginationPage: currentPage });
@@ -243,20 +274,10 @@ paginationSelectElem.addEventListener("change", (event) => {
 });
 
 // 検索バーの内容・ページ番号を保存・復元
-// 検索バー復元
-chrome.storage.local.get(["searchInputValue", "paginationPage"], (result) => {
+// 検索バー復元（初期化時に実行）
+chrome.storage.local.get(["searchInputValue"], (result) => {
   if (result.searchInputValue !== undefined) {
     document.getElementById("searchInput").value = result.searchInputValue;
-    // 検索クエリがあればフィルタも反映
-    const searchQuery = result.searchInputValue.toLowerCase();
-    filteredLinks = allLinks.filter(
-      (item) =>
-        item.title.toLowerCase().includes(searchQuery) ||
-        item.url.toLowerCase().includes(searchQuery)
-    );
-  }
-  if (result.paginationPage !== undefined) {
-    currentPage = Number(result.paginationPage) || 1;
   }
 });
 
@@ -265,6 +286,8 @@ document.querySelector(".pagination-previous").addEventListener("click", () => {
   if (currentPage > 1) {
     currentPage--;
     chrome.storage.local.set({ paginationPage: currentPage });
+    // セレクトボックスも更新
+    document.getElementById("pagination-select").value = currentPage;
     displayLinks();
   }
 });
@@ -274,6 +297,8 @@ document.querySelector(".pagination-next").addEventListener("click", () => {
   if (currentPage < totalPages) {
     currentPage++;
     chrome.storage.local.set({ paginationPage: currentPage });
+    // セレクトボックスも更新
+    document.getElementById("pagination-select").value = currentPage;
     displayLinks();
   }
 });
@@ -296,10 +321,7 @@ document
         return;
       }
       // 設定取得
-      const { linktomeUrl, token } = await chrome.storage.local.get([
-        "linktomeUrl",
-        "token",
-      ]);
+      const { linktomeUrl, token } = await getSettings();
       if (!linktomeUrl || !token) {
         alert("URLまたはTokenが未設定です");
         return;
@@ -322,7 +344,8 @@ document
         alert("現在のタブを保存しました");
         fetchLinks(currentPage); // 保存後にリスト更新
       } catch (err) {
-        alert("保存に失敗しました");
+        console.error("保存エラー:", err);
+        alert(`保存に失敗しました: ${err.message}`);
         fetchLinks(currentPage); // リスト更新
       }
     });
