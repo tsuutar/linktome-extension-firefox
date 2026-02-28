@@ -4,10 +4,100 @@ let allLinks = []; // APIから取得した全リンクを保持
 let filteredLinks = []; // 検索結果を保持
 const ITEMS_PER_PAGE = 20;
 let currentTabUrl = ""; // 現在のタブのURL
+let isOffline = false; // オフライン状態
 
 // 設定を取得するヘルパー関数
 async function getSettings() {
   return await chrome.storage.local.get(["linktomeUrl", "token"]);
+}
+
+// --- オフライン対応ヘルパー ---
+
+// リンク一覧をキャッシュに保存
+async function cacheLinks(links) {
+  await chrome.storage.local.set({ cachedLinks: links });
+}
+
+// キャッシュからリンク一覧を取得
+async function getCachedLinks() {
+  const { cachedLinks } = await chrome.storage.local.get("cachedLinks");
+  return cachedLinks || [];
+}
+
+// 操作キューを取得
+async function getOfflineQueue() {
+  const { offlineQueue } = await chrome.storage.local.get("offlineQueue");
+  return offlineQueue || [];
+}
+
+// 操作キューに追加
+async function enqueueOperation(operation) {
+  const queue = await getOfflineQueue();
+  queue.push({ ...operation, timestamp: Date.now() });
+  await chrome.storage.local.set({ offlineQueue: queue });
+  updateOfflineBanner();
+}
+
+// オフラインバナーの表示更新
+async function updateOfflineBanner() {
+  const banner = document.getElementById("offlineBanner");
+  if (!banner) return;
+  const queue = await getOfflineQueue();
+  if (isOffline) {
+    banner.classList.remove("hidden");
+    banner.textContent =
+      queue.length > 0
+        ? `⚡ オフライン（未同期: ${queue.length}件）`
+        : "⚡ オフライン（キャッシュ表示中）";
+  } else if (queue.length > 0) {
+    banner.classList.remove("hidden");
+    banner.textContent = `🔄 同期中...（${queue.length}件）`;
+  } else {
+    banner.classList.add("hidden");
+  }
+}
+
+// キューの操作を同期（同期を実行したかを返す）
+async function syncOfflineQueue() {
+  const queue = await getOfflineQueue();
+  if (queue.length === 0) return false;
+
+  const { linktomeUrl, token } = await getSettings();
+  if (!linktomeUrl || !token) return;
+
+  const remaining = [];
+  for (const op of queue) {
+    try {
+      if (op.type === "add") {
+        const res = await fetch(`${linktomeUrl}api/submit`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ title: op.title, url: op.url }),
+        });
+        // 409: 既に追加済み → 成功扱いでスキップ
+        if (!res.ok && res.status !== 409) remaining.push(op);
+      } else if (op.type === "delete") {
+        const res = await fetch(
+          `${linktomeUrl}api/delete?id=${encodeURIComponent(op.id)}`,
+          {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+        // 400: 既に削除済み（Missing id）→ 成功扱いでスキップ
+        if (!res.ok && res.status !== 400) remaining.push(op);
+      }
+    } catch {
+      remaining.push(op);
+      break; // まだオフラインなので中断
+    }
+  }
+  await chrome.storage.local.set({ offlineQueue: remaining });
+  updateOfflineBanner();
+  return true;
 }
 
 // 現在のタブのURLを取得
@@ -142,42 +232,79 @@ async function fetchLinks(page = 1) {
 
     const data = await response.json();
     allLinks = data;
+    isOffline = false;
 
-    // 検索条件を取得してフィルタリング
-    const { searchInputValue } = await chrome.storage.local.get([
-      "searchInputValue",
-    ]);
-    const searchQuery = (searchInputValue || "").toLowerCase();
+    // キャッシュに保存
+    await cacheLinks(allLinks);
 
-    if (searchQuery) {
-      filteredLinks = allLinks.filter(
-        (item) =>
-          item.title.toLowerCase().includes(searchQuery) ||
-          item.url.toLowerCase().includes(searchQuery),
-      );
-    } else {
-      filteredLinks = allLinks;
+    // オンライン復帰時にキューを同期
+    const synced = await syncOfflineQueue();
+
+    if (synced) {
+      // 同期後にサーバーから最新データを再取得
+      try {
+        const refreshRes = await fetch(
+          `${linktomeUrl}api/urls?_=${Date.now()}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+        if (refreshRes.ok) {
+          allLinks = await refreshRes.json();
+          await cacheLinks(allLinks);
+        }
+      } catch {
+        // 再取得失敗時は既存データで続行
+      }
     }
 
-    // フィルタ後のリンク数でページ数を計算
-    totalPages = Math.ceil(filteredLinks.length / ITEMS_PER_PAGE);
+    applyFilterAndDisplay();
+  } catch (error) {
+    console.error("取得エラー:", error);
+    isOffline = true;
 
-    // 保存されているページ番号を取得し、範囲チェック
-    const { paginationPage } = await chrome.storage.local.get([
-      "paginationPage",
-    ]);
+    // キャッシュからリンクを表示
+    allLinks = await getCachedLinks();
+    if (allLinks.length > 0) {
+      console.log("オフライン: キャッシュからリンクを表示します");
+      applyFilterAndDisplay();
+    } else {
+      alert("リンク取得に失敗しました（キャッシュもありません）");
+    }
+  }
+  updateOfflineBanner();
+}
+
+// フィルタリングとページネーション適用・表示
+function applyFilterAndDisplay() {
+  // 検索条件でフィルタリング
+  const searchQuery = (
+    document.getElementById("searchInput")?.value || ""
+  ).toLowerCase();
+
+  if (searchQuery) {
+    filteredLinks = allLinks.filter(
+      (item) =>
+        item.title.toLowerCase().includes(searchQuery) ||
+        item.url.toLowerCase().includes(searchQuery),
+    );
+  } else {
+    filteredLinks = allLinks;
+  }
+
+  // フィルタ後のリンク数でページ数を計算
+  totalPages = Math.ceil(filteredLinks.length / ITEMS_PER_PAGE);
+
+  // 保存されているページ番号を取得（同期的にチェック）
+  chrome.storage.local.get(["paginationPage"], ({ paginationPage }) => {
     if (paginationPage && paginationPage <= totalPages) {
       currentPage = paginationPage;
     } else {
       currentPage = 1;
     }
-
     updatePagination();
     displayLinks();
-  } catch (error) {
-    console.error("取得エラー:", error);
-    alert("リンク取得に失敗しました");
-  }
+  });
 }
 
 // リストを画面に表示
@@ -262,7 +389,11 @@ function createLinkElement(item, isPinned) {
         fetchLinks(currentPage);
       } catch (err) {
         console.error("削除エラー:", err);
-        alert(`削除に失敗しました: ${err.message}`);
+        // オフライン時はキューに追加してローカルから削除
+        await enqueueOperation({ type: "delete", id: item.id });
+        allLinks = allLinks.filter((l) => l.id !== item.id);
+        await cacheLinks(allLinks);
+        applyFilterAndDisplay();
       }
     }
   });
@@ -429,8 +560,13 @@ document
         fetchLinks(currentPage); // 保存後にリスト更新
       } catch (err) {
         console.error("保存エラー:", err);
-        alert(`保存に失敗しました: ${err.message}`);
-        fetchLinks(currentPage); // リスト更新
+        // オフライン時はキューに追加してローカルにも反映
+        const tempId = `offline_${Date.now()}`;
+        await enqueueOperation({ type: "add", title, url });
+        allLinks.unshift({ id: tempId, title, url });
+        await cacheLinks(allLinks);
+        applyFilterAndDisplay();
+        alert("オフラインのため、オンライン復帰時に同期します");
       }
     });
   });

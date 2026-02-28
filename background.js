@@ -44,7 +44,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         console.log("LinkToMeに保存しました:", url);
       }
     } catch (error) {
-      console.error("保存エラー:", error);
+      console.error("保存エラー（オフライン）:", error);
+      // オフライン時はキューに追加
+      const { offlineQueue = [] } =
+        await chrome.storage.local.get("offlineQueue");
+      offlineQueue.push({ type: "add", title, url, timestamp: Date.now() });
+      await chrome.storage.local.set({ offlineQueue });
+      console.log("オフラインキューに追加しました:", url);
     }
   }
 });
