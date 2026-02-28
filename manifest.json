@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "LinkToMe",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "LinkToMe extension for Firefox / Chrome",
   "author": "tsuutar",
-  "homepage_url": "https://github.com/tsuutar/linktome-extension-firefox",
+  "homepage_url": "https://github.com/tsuutar/linktome-extension",
   "permissions": ["tabs", "storage", "activeTab", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "icons": {
