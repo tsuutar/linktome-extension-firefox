@@ -153,14 +153,11 @@ async function fetchLinks(page = 1) {
       filteredLinks = allLinks.filter(
         (item) =>
           item.title.toLowerCase().includes(searchQuery) ||
-          item.url.toLowerCase().includes(searchQuery)
+          item.url.toLowerCase().includes(searchQuery),
       );
     } else {
       filteredLinks = allLinks;
     }
-
-    // 現在のタブと一致するブックマークを最優先でソート
-    filteredLinks = sortLinksByCurrentTab(filteredLinks);
 
     // フィルタ後のリンク数でページ数を計算
     totalPages = Math.ceil(filteredLinks.length / ITEMS_PER_PAGE);
@@ -186,79 +183,100 @@ async function fetchLinks(page = 1) {
 // リストを画面に表示
 function displayLinks() {
   const list = document.getElementById("linkList");
+  const pinnedList = document.getElementById("pinnedList");
   list.innerHTML = "";
+  pinnedList.innerHTML = "";
+
+  // 現在のタブと一致するリンクをピン留めとして常に最上部にスティッキー表示
+  const pinnedItem = currentTabUrl
+    ? filteredLinks.find((item) => item.url === currentTabUrl)
+    : null;
+  if (pinnedItem) {
+    pinnedList.appendChild(createLinkElement(pinnedItem, true));
+    pinnedList.classList.remove("hidden");
+  } else {
+    pinnedList.classList.add("hidden");
+  }
 
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, filteredLinks.length);
 
   for (let i = startIndex; i < endIndex; i++) {
     const item = filteredLinks[i];
-    const li = document.createElement("li");
-    li.style.cursor = "pointer";
+    // ピン留め済みのアイテムはスキップ（重複防止）
+    if (pinnedItem && item.url === currentTabUrl) continue;
 
-    // 現在のタブと一致する場合は特別なスタイルを適用
-    const isCurrentTab = item.url === currentTabUrl;
-    if (isCurrentTab) {
-      li.classList.add("current-tab");
-    }
-
-    li.addEventListener("click", () => {
-      chrome.tabs.create({ url: item.url });
-    });
-
-    // タイトル行
-    const titleRow = document.createElement("div");
-    titleRow.className = "link-title-row";
-
-    // タイトル
-    const titleSpan = document.createElement("span");
-    titleSpan.className = "link-title";
-    titleSpan.textContent = item.title || item.url;
-    titleSpan.title = item.title || item.url;
-    titleRow.appendChild(titleSpan);
-
-    // 削除アイコン
-    const del = document.createElement("span");
-    del.className = "delete-icon";
-    del.innerHTML = "&#128465;"; // ゴミ箱アイコン
-    del.title = "削除";
-    del.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      if (confirm("本当に削除しますか？")) {
-        const { linktomeUrl, token } = await getSettings();
-        try {
-          const res = await fetch(
-            `${linktomeUrl}api/delete?id=${encodeURIComponent(item.id)}`,
-            {
-              method: "DELETE",
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          );
-          if (!res.ok) {
-            const errorText = await res.text();
-            throw new Error(`削除失敗 (${res.status}): ${errorText}`);
-          }
-          fetchLinks(currentPage);
-        } catch (err) {
-          console.error("削除エラー:", err);
-          alert(`削除に失敗しました: ${err.message}`);
-        }
-      }
-    });
-    titleRow.appendChild(del);
-    li.appendChild(titleRow);
-
-    // URL行
-    const urlSpan = document.createElement("span");
-    urlSpan.className = "link-url";
-    urlSpan.textContent = item.url;
-    urlSpan.title = item.url;
-    li.appendChild(urlSpan);
-
-    list.appendChild(li);
+    list.appendChild(createLinkElement(item, false));
   }
+}
+
+// リンク要素を生成する関数
+function createLinkElement(item, isPinned) {
+  const li = document.createElement("li");
+  li.style.cursor = "pointer";
+
+  // 現在のタブと一致する場合は特別なスタイルを適用
+  const isCurrentTab = item.url === currentTabUrl;
+  if (isCurrentTab) {
+    li.classList.add("current-tab");
+  }
+
+  li.addEventListener("click", () => {
+    chrome.tabs.create({ url: item.url });
+  });
+
+  // タイトル行
+  const titleRow = document.createElement("div");
+  titleRow.className = "link-title-row";
+
+  // タイトル
+  const titleSpan = document.createElement("span");
+  titleSpan.className = "link-title";
+  titleSpan.textContent = item.title || item.url;
+  titleSpan.title = item.title || item.url;
+  titleRow.appendChild(titleSpan);
+
+  // 削除アイコン
+  const del = document.createElement("span");
+  del.className = "delete-icon";
+  del.innerHTML = "&#128465;"; // ゴミ箱アイコン
+  del.title = "削除";
+  del.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (confirm("本当に削除しますか？")) {
+      const { linktomeUrl, token } = await getSettings();
+      try {
+        const res = await fetch(
+          `${linktomeUrl}api/delete?id=${encodeURIComponent(item.id)}`,
+          {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`削除失敗 (${res.status}): ${errorText}`);
+        }
+        fetchLinks(currentPage);
+      } catch (err) {
+        console.error("削除エラー:", err);
+        alert(`削除に失敗しました: ${err.message}`);
+      }
+    }
+  });
+  titleRow.appendChild(del);
+  li.appendChild(titleRow);
+
+  // URL行
+  const urlSpan = document.createElement("span");
+  urlSpan.className = "link-url";
+  urlSpan.textContent = item.url;
+  urlSpan.title = item.url;
+  li.appendChild(urlSpan);
+
+  return li;
 }
 
 // リストを更新
@@ -295,10 +313,8 @@ searchInputElem.addEventListener("input", (event) => {
   filteredLinks = allLinks.filter(
     (item) =>
       item.title.toLowerCase().includes(searchQuery) ||
-      item.url.toLowerCase().includes(searchQuery)
+      item.url.toLowerCase().includes(searchQuery),
   );
-  // 現在のタブと一致するブックマークを最優先でソート
-  filteredLinks = sortLinksByCurrentTab(filteredLinks);
   // フィルタ後のリンク数でページ数を再計算
   totalPages = Math.ceil(filteredLinks.length / ITEMS_PER_PAGE);
   // 検索後に1ページ目に戻る
@@ -341,6 +357,31 @@ document.querySelector(".pagination-next").addEventListener("click", () => {
     currentPage++;
     chrome.storage.local.set({ paginationPage: currentPage });
     // セレクトボックスも更新
+    document.getElementById("pagination-select").value = currentPage;
+    displayLinks();
+  }
+});
+
+// キーボードの左右矢印キーでページ切り替え
+document.addEventListener("keydown", (event) => {
+  // 入力フォームにフォーカスがある場合は無視
+  const activeTag = document.activeElement?.tagName;
+  if (
+    activeTag === "INPUT" ||
+    activeTag === "TEXTAREA" ||
+    activeTag === "SELECT"
+  ) {
+    return;
+  }
+
+  if (event.key === "ArrowLeft" && currentPage > 1) {
+    currentPage--;
+    chrome.storage.local.set({ paginationPage: currentPage });
+    document.getElementById("pagination-select").value = currentPage;
+    displayLinks();
+  } else if (event.key === "ArrowRight" && currentPage < totalPages) {
+    currentPage++;
+    chrome.storage.local.set({ paginationPage: currentPage });
     document.getElementById("pagination-select").value = currentPage;
     displayLinks();
   }

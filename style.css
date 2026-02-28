@@ -67,7 +67,9 @@ li {
   flex-direction: column;
   gap: 2px;
   min-height: 44px;
-  transition: background 0.2s, border-left 0.2s;
+  transition:
+    background 0.2s,
+    border-left 0.2s;
 }
 li:hover {
   background: #f0f7f0;
@@ -102,7 +104,9 @@ li.current-tab:hover {
   font-size: 18px;
   cursor: pointer;
   margin-left: 10px;
-  transition: color 0.2s, opacity 0.2s;
+  transition:
+    color 0.2s,
+    opacity 0.2s;
   opacity: 0;
   width: 22px;
   text-align: center;
@@ -208,6 +212,20 @@ li:hover .delete-icon {
   background: #e0e0e0;
   margin-top: 2px;
 }
+/* ピン留めリスト（現在のタブと一致するリンク） */
+#pinnedList {
+  position: sticky;
+  top: 48px; /* 検索バーの下に固定 */
+  z-index: 9;
+  background: #f4f7f9;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+
 /* リンクリストの余白調整 */
 #linkList {
   margin-top: 0;
