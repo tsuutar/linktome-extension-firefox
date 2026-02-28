@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "LinkToMe",
   "version": "1.0.1",
-  "description": "LinkToMe extension for Firefox",
+  "description": "LinkToMe extension for Firefox / Chrome",
   "author": "tsuutar",
   "homepage_url": "https://github.com/tsuutar/linktome-extension-firefox",
   "permissions": ["tabs", "storage", "activeTab", "contextMenus"],
@@ -23,7 +23,7 @@
     }
   },
   "background": {
-    "scripts": ["background.js"]
+    "service_worker": "background.js"
   },
   "browser_specific_settings": {
     "gecko": {
